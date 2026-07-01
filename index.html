@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>12F Luxury Photo Studio Engine</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap');
+
+        :root {
+            --bg-main: #0b0c10;
+            --panel-ui: rgba(22, 24, 30, 0.75);
+            --border-glow: rgba(255, 255, 255, 0.08);
+            --brand-accent: #ffffff;
+            --text-muted: #8a8f9c;
+            --strip-color: #ffffff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            background-image: radial-gradient(circle at 50% 50%, #1a1c24 0%, #0b0c10 100%);
+        }
+
+        /* --- INTRO SPLASH SCREEN --- */
+        #intro-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #0b0c10;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .intro-card {
+            text-align: center;
+            max-width: 450px;
+            padding: 40px;
+            border-radius: 24px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.05);
+            backdrop-filter: blur(20px);
+        }
+        .intro-card h1 { font-weight: 800; font-size: 2.2rem; letter-spacing: -1px; margin-bottom: 10px; }
+        .intro-card p { color: var(--text-muted); font-size: 0.95rem; line-height: 1.5; margin-bottom: 30px; }
+        .enter-btn {
+            background: #ffffff; color: #0b0c10; border: none; padding: 16px 32px; 
+            font-weight: 700; border-radius: 14px; cursor: pointer; letter-spacing: -0.2px;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        .enter-btn:hover { transform: scale(1.02); opacity: 0.95; }
+
+        /* --- MAIN CONTAINER --- */
+        .booth-container {
+            display: flex;
+            width: 95vw;
+            max-width: 1300px;
+            height: 88vh;
+            background: var(--panel-ui);
+            border-radius: 32px;
+            backdrop-filter: blur(30px);
+            border: 1px solid var(--border-glow);
+            box-shadow: 0 40px 100px rgba(0,0,0,0.8);
+            overflow: hidden;
+            opacity: 0;
+            transform: scale(0.98);
+            transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .booth-container.loaded { opacity: 1; transform: scale(1); }
+
+        /* Sidebar Styling */
+        .control-sidebar {
+            width: 400px;
+            border-right: 1px solid var(--border-glow);
+            padding: 40px 35px;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            overflow-y: auto;
+            background: rgba(10, 11, 14, 0.3);
+        }
+
+        .brand-header h1 { font-weight: 800; font-size: 1.4rem; letter-spacing: -0.5px; }
+        .brand-header p { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+
+        .setting-section h3 {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 14px;
+            font-weight: 700;
+        }
+
+        /* Mode Switcher Tabs */
+        .mode-selector {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            background: rgba(255,255,255,0.04);
+            padding: 4px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.02);
+        }
+        .mode-tab-btn {
+            background: transparent; border: none; padding: 12px; font-size: 0.8rem;
+            font-weight: 600; color: var(--text-muted); cursor: pointer; border-radius: 9px;
+            transition: all 0.2s ease;
+        }
+        .mode-tab-btn.active { background: rgba(255,255,255,0.08); color: #ffffff; }
+
+        /* Color Circle Nodes (Locked to White and Black) */
+        .picker-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+        .color-node {
+            width: 34px; height: 34px; border-radius: 50%; border: 2px solid transparent;
+            outline: 1px solid rgba(255,255,255,0.15); cursor: pointer; transition: transform 0.2s;
+        }
+        .color-node.active { outline: 2px solid #ffffff; transform: scale(1.08); }
+
+        /* Custom Input Panels */
+        .edit-form { display: flex; flex-direction: column; gap: 10px; }
+        .input-row { display: flex; gap: 10px; }
+        .edit-form input {
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+            padding: 12px 16px; border-radius: 10px; font-size: 0.8rem; color: white;
+            outline: none; transition: border-color 0.2s;
+        }
+        .edit-form input:focus { border-color: rgba(255,255,255,0.3); }
+        .input-full { width: 100%; }
+        .input-split-left { flex: 2; }
+        .input-split-right { flex: 1; }
+
+        .action-block { margin-top: auto; display: flex; flex-direction: column; gap: 12px; }
+        .trigger-btn {
+            width: 100%; background: #ffffff; color: #0b0c10; border: none; padding: 18px;
+            border-radius: 14px; font-size: 0.95rem; font-weight: 700; cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .trigger-btn:disabled { background: rgba(255,255,255,0.1); color: var(--text-muted); cursor: not-allowed; }
+
+        .download-btn {
+            width: 100%; background: transparent; color: white; border: 1px solid rgba(255,255,255,0.2);
+            padding: 14px; border-radius: 14px; font-size: 0.9rem; font-weight: 600;
+            cursor: pointer; display: none; text-align: center; text-decoration: none;
+            transition: background 0.2s;
+        }
+        .download-btn:hover { background: rgba(255,255,255,0.05); }
+
+        /* --- STUDIO VIEWPORT WORKSPACE --- */
+        .live-stage {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-evenly;
+            padding: 40px;
+            gap: 40px;
+        }
+
+        .viewport-wrapper {
+            position: relative;
+            width: 500px; height: 375px; 
+            background: #000000; border-radius: 24px; overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+            border: 1px solid var(--border-glow);
+            box-shadow: 0 30px 70px rgba(0,0,0,0.4);
+        }
+        
+        /* Brightened B&W camera preview feed */
+        .video-stream { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+            transform: scaleX(-1); 
+            filter: grayscale(1) contrast(1.15) brightness(1.05); 
+        }
+        .hud-overlay { position: absolute; font-size: 6rem; font-weight: 800; color: white; z-index: 10; }
+
+        /* Output Virtual Strip Display Window Container */
+        .strip-output-area { 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            width: 240px;
+            overflow: visible;
+        }
+        
+        .base-strip-frame {
+            width: 196px; 
+            padding: 12px 8px 20px 8px; 
+            box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background-color: var(--strip-color);
+            transition: background-color 0.25s ease;
+            transform: scale(0.85);
+            transform-origin: center center;
+        }
+
+        .strip-cell {
+            width: 180px; height: 135px; 
+            background: rgba(0,0,0,0.05); background-size: cover; background-position: center;
+            border: 1px solid rgba(0,0,0,0.03);
+        }
+
+        .strip-footer-wrapper {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 4px;
+        }
+        .strip-caption {
+            font-size: 0.52rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.5px; color: #6b7280; display: block; margin-bottom: 2px;
+        }
+        .strip-footer {
+            font-size: 0.95rem; font-weight: 800; letter-spacing: 1px;
+            text-transform: uppercase; color: #1a1d24;
+        }
+
+        /* --- Receipt Mode CSS Class Injections --- */
+        .receipt-header-element { display: none; text-align: center; margin-bottom: 4px; border-bottom: 1px dashed #94a3b8; padding-bottom: 10px;}
+        .receipt-header-element h2 { font-size: 1.25rem; font-weight: 700; text-transform: uppercase; line-height: 1.2; letter-spacing: -0.5px; }
+        .receipt-header-element p { font-size: 0.6rem; margin-top: 3px; font-weight: bold; }
+
+        .receipt-ledger-element {
+            display: none; font-size: 0.6rem; line-height: 1.6;
+            margin-bottom: 4px; border-bottom: 1px dashed #94a3b8; padding-bottom: 10px;
+        }
+        .ledger-row { display: flex; justify-content: space-between; }
+        .ledger-total { margin-top: 6px; font-weight: bold; }
+
+        .base-strip-frame.receipt-mode {
+            font-family: 'Courier Prime', monospace !important;
+            background-color: #fcfbfa !important;
+            width: 204px; 
+            padding: 16px 12px;
+            transform: scale(0.9);
+        }
+        .base-strip-frame.receipt-mode * { font-family: 'Courier Prime', monospace !important; }
+        .base-strip-frame.receipt-mode .strip-footer-wrapper .strip-footer { font-size: 0.75rem; font-weight: 700; color: #1a1d24 !important; }
+        /* --- REPLACE THIS SECTION IN YOUR EXISTING <STYLE> BLOCK --- */
+
+/* Mobile & iPad Responsive Overrides */
+@media (max-width: 900px) {
+    body { 
+        overflow-y: auto; 
+        display: block; 
+        padding: 10px; 
+    }
+
+    .booth-container { 
+        width: 100% !important; 
+        height: auto !important; 
+        flex-direction: column !important; 
+        margin-top: 20px;
+        overflow: visible;
+    }
+
+    .control-sidebar { 
+        width: 100% !important; 
+        padding: 20px !important; 
+    }
+
+    .live-stage { 
+        flex-direction: column !important; 
+        padding: 20px !important; 
+        gap: 20px !important; 
+    }
+
+    .viewport-wrapper { 
+        width: 100% !important; 
+        max-width: 400px !important; /* Prevents stretching */
+        height: 300px !important; 
+        margin: 0 auto;
+    }
+
+    .base-strip-frame { 
+        transform: scale(0.7) !important; /* Shrinks the strip to fit width */
+        margin: 0 auto;
+    }
+}
+    </style>
+</head>
+<body>
+
+    <div id="intro-overlay">
+        <div class="intro-card">
+            <h1>12F PHOTO STUDIO</h1>
+            <p>Capture real-time snapshots processed inside synchronized, high-fidelity aspect-ratio strip matrices. Access to camera device configurations required.</p>
+            <button class="enter-btn" onclick="initializeStudioHardware()">Allow Camera & Enter</button>
+        </div>
+    </div>
+
+    <div class="booth-container" id="mainDashboard">
+        <aside class="control-sidebar">
+            <div class="brand-header">
+                <h1>12F STUDIO FLOOR</h1>
+                <p>Configure layouts and compile asset layers instantly.</p>
+            </div>
+
+            <div class="setting-section">
+                <h3>1. Select Studio Profile</h3>
+                <div class="mode-selector">
+                    <button class="mode-tab-btn active" id="tab-classic" onclick="toggleEngineView('classic')">Normal Strip</button>
+                    <button class="mode-tab-btn" id="tab-receipt" onclick="toggleEngineView('receipt')">Receipt Ticket</button>
+                </div>
+            </div>
+
+            <div class="setting-section" id="classic-color-module">
+                <h3>2. Normal Outer Frame Color</h3>
+                <div class="picker-grid">
+                    <button class="color-node active" style="background:#ffffff;" onclick="setClassicBorderColor('#ffffff', this)"></button>
+                    <button class="color-node" style="background:#111111;" onclick="setClassicBorderColor('#111111', this)"></button>
+                </div>
+            </div>
+
+            <div class="setting-section" id="customizer-module">
+                <h3>3. Customize Metadata Content</h3>
+                
+                <div class="edit-form" id="classic-form-inputs">
+                    <input type="text" id="in-caption" class="input-full" value="Class of 2026" oninput="syncFormValues()" placeholder="Small Caption Text">
+                </div>
+
+                <div class="edit-form" id="receipt-form-inputs" style="display: none;">
+                    <input type="text" id="in-subtitle" class="input-full" value="TRACK ORDER" oninput="syncFormValues()" placeholder="Subtitle Header">
+                    <input type="text" id="in-date" class="input-full" value="DATE: MAY 16, 2026" oninput="syncFormValues()" placeholder="Custom Date Line">
+                    
+                    <div class="input-row">
+                        <input type="text" id="in-i1-name" class="input-split-left" value="ITEM 1" oninput="syncFormValues()">
+                        <input type="text" id="in-i1-val" class="input-split-right" value="03:31" oninput="syncFormValues()">
+                    </div>
+                    <div class="input-row">
+                        <input type="text" id="in-i2-name" class="input-split-left" value="ITEM 2" oninput="syncFormValues()">
+                        <input type="text" id="in-i2-val" class="input-split-right" value="04:00" oninput="syncFormValues()">
+                    </div>
+                    <div class="input-row">
+                        <input type="text" id="in-total-name" class="input-split-left" value="TOTAL PRICE" oninput="syncFormValues()">
+                        <input type="text" id="in-total-val" class="input-split-right" value="$0.00" oninput="syncFormValues()">
+                    </div>
+                    <input type="text" id="in-receipt-footer" class="input-full" value="Class of 2026" oninput="syncFormValues()" placeholder="Bottom Footnote Label">
+                </div>
+            </div>
+
+            <div class="action-block">
+                <button id="start-btn" class="trigger-btn">Start Session</button>
+                <a id="download-link" class="download-btn">Download Final Layout</a>
+            </div>
+        </aside>
+
+        <main class="live-stage">
+            <div class="viewport-wrapper">
+                <div id="hud" class="hud-overlay"></div>
+                <video id="webcam" autoplay playsinline class="video-stream"></video>
+            </div>
+
+            <div class="strip-output-area">
+                <div class="base-strip-frame" id="studioStrip">
+                    
+                    <div class="receipt-header-element" id="receiptHeaderBlock">
+                        <h2>12FXCK</h2>
+                        <p id="lbl-subtitle">TRACK ORDER</p>
+                        <p style="font-size:0.53rem; margin-top:4px;" id="lbl-date">DATE: MAY 16, 2026</p>
+                    </div>
+
+                    <div class="receipt-ledger-element" id="receiptLedgerBlock">
+                        <div class="ledger-row"><span id="lbl-i1-name">ITEM 1</span><span id="lbl-i1-val">03:31</span></div>
+                        <div class="ledger-row"><span id="lbl-i2-name">ITEM 2</span><span id="lbl-i2-val">04:00</span></div>
+                        <div class="ledger-row ledger-total"><span id="lbl-total-name">TOTAL PRICE</span><span id="lbl-total-val">$0.00</span></div>
+                    </div>
+
+                    <div id="cellsContainer" style="display:flex; flex-direction:column; gap:12px;"></div>
+
+                    <div class="strip-footer-wrapper">
+                        <span class="strip-caption" id="lbl-caption">Class Of 2026</span>
+                        <span class="strip-footer" id="stripFooterText">12F</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const startBtn = document.getElementById('start-btn');
+        const downloadBtn = document.getElementById('download-link');
+        const hud = document.getElementById('hud');
+        const studioStrip = document.getElementById('studioStrip');
+        const footerText = document.getElementById('stripFooterText');
+        const cellsContainer = document.getElementById('cellsContainer');
+        
+        const receiptHeaderBlock = document.getElementById('receiptHeaderBlock');
+        const receiptLedgerBlock = document.getElementById('receiptLedgerBlock');
+        const classicColorModule = document.getElementById('classic-color-module');
+        const classicFormInputs = document.getElementById('classic-form-inputs');
+        const receiptFormInputs = document.getElementById('receipt-form-inputs');
+
+        let currentActiveMode = 'classic'; 
+        let classicBorderValue = '#ffffff';
+        let capturedImagesData = [];
+        let totalTargetShots = 4;
+
+        document.getElementById('in-date').value = `DATE: ${new Date().toLocaleDateString('en-US', {year:'numeric', month:'short', day:'numeric'}).toUpperCase()}`;
+
+        function buildStripGrid(count) {
+            cellsContainer.innerHTML = '';
+            for(let i = 0; i < count; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'strip-cell';
+                cellsContainer.appendChild(cell);
+            }
+        }
+        buildStripGrid(totalTargetShots);
+
+        function initializeStudioHardware() {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+                .then(strm => {
+                    video.srcObject = strm;
+                    document.getElementById('intro-overlay').style.opacity = '0';
+                    setTimeout(() => {
+                        document.getElementById('intro-overlay').style.display = 'none';
+                        document.getElementById('mainDashboard').classList.add('loaded');
+                    }, 600);
+                })
+                .catch(err => {
+                    alert("Camera configuration layer access denied or unavailable.");
+                });
+            }
+        }
+
+        function syncFormValues() {
+            document.getElementById('lbl-subtitle').innerText = document.getElementById('in-subtitle').value;
+            document.getElementById('lbl-date').innerText = document.getElementById('in-date').value;
+            document.getElementById('lbl-i1-name').innerText = document.getElementById('in-i1-name').value;
+            document.getElementById('lbl-i1-val').innerText = document.getElementById('in-i1-val').value;
+            document.getElementById('lbl-i2-name').innerText = document.getElementById('in-i2-name').value;
+            document.getElementById('lbl-i2-val').innerText = document.getElementById('in-i2-val').value;
+            document.getElementById('lbl-total-name').innerText = document.getElementById('in-total-name').value;
+            document.getElementById('lbl-total-val').innerText = document.getElementById('in-total-val').value;
+            
+            if(currentActiveMode === 'classic') {
+                document.getElementById('lbl-caption').innerText = document.getElementById('in-caption').value;
+                document.getElementById('lbl-caption').style.display = 'block';
+            } else {
+                document.getElementById('lbl-caption').style.display = 'none';
+                footerText.innerText = document.getElementById('in-receipt-footer').value;
+            }
+        }
+
+        function toggleEngineView(targetMode) {
+            currentActiveMode = targetMode;
+            downloadBtn.style.display = 'none';
+            
+            document.getElementById('tab-classic').classList.toggle('active', targetMode === 'classic');
+            document.getElementById('tab-receipt').classList.toggle('active', targetMode === 'receipt');
+
+            if (targetMode === 'classic') {
+                totalTargetShots = 4;
+                buildStripGrid(totalTargetShots);
+                classicColorModule.style.display = 'block';
+                classicFormInputs.style.display = 'flex';
+                receiptFormInputs.style.display = 'none';
+                receiptHeaderBlock.style.display = 'none';
+                receiptLedgerBlock.style.display = 'none';
+                studioStrip.classList.remove('receipt-mode');
+                footerText.innerText = "12F";
+                setClassicBorderColor(classicBorderValue, document.querySelector(`.color-node[style*="${classicBorderValue}"]`));
+            } else {
+                totalTargetShots = 2;
+                buildStripGrid(totalTargetShots);
+                classicColorModule.style.display = 'none';
+                classicFormInputs.style.display = 'none';
+                receiptFormInputs.style.display = 'flex';
+                receiptHeaderBlock.style.display = 'block';
+                receiptLedgerBlock.style.display = 'block';
+                studioStrip.classList.add('receipt-mode');
+                footerText.innerText = document.getElementById('in-receipt-footer').value;
+            }
+            syncFormValues();
+        }
+
+        function setClassicBorderColor(color, element) {
+            classicBorderValue = color;
+            if(currentActiveMode === 'classic') {
+                studioStrip.style.backgroundColor = color;
+                const txtColor = (color === '#111111') ? '#ffffff' : '#1a1d24';
+                footerText.style.color = txtColor;
+                document.getElementById('lbl-caption').style.color = (color === '#111111') ? 'rgba(255,255,255,0.5)' : '#6b7280';
+            }
+            document.querySelectorAll('.color-node').forEach(n => n.classList.remove('active'));
+            if(element) element.classList.add('active');
+        }
+
+        startBtn.addEventListener('click', async () => {
+            startBtn.disabled = true;
+            downloadBtn.style.display = 'none';
+            capturedImagesData = [];
+
+            const activeCells = document.querySelectorAll('.strip-cell');
+            activeCells.forEach(c => c.style.backgroundImage = 'none');
+
+            for(let i = 0; i < totalTargetShots; i++) {
+                await executeShotSequence(i);
+            }
+
+            startBtn.disabled = false;
+            compileHighResOutput();
+        });
+
+        function executeShotSequence(cellIndex) {
+            return new Promise((resolve) => {
+                let timer = 3;
+                hud.innerText = timer;
+                let intv = setInterval(() => {
+                    timer--;
+                    if(timer > 0) {
+                        hud.innerText = timer;
+                    } else {
+                        clearInterval(intv);
+                        hud.innerText = "SHOOT";
+                        processCapture(cellIndex);
+                        setTimeout(() => { hud.innerText = ""; resolve(); }, 500);
+                    }
+                }, 1000);
+            });
+        }
+
+        function processCapture(index) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 400; canvas.height = 300; 
+            const ctx = canvas.getContext('2d');
+
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+            
+            // Brightened high-contrast B&W picture generation filter matrix mapping
+            ctx.filter = 'grayscale(100%) contrast(115%) brightness(1.05)';
+
+            ctx.drawImage(video, 0, 0, 640, 480, 0, 0, canvas.width, canvas.height);
+            const base64 = canvas.toDataURL('image/jpeg', 0.95);
+            capturedImagesData.push(base64);
+            
+            const activeCells = document.querySelectorAll('.strip-cell');
+            activeCells[index].style.backgroundImage = `url(${base64})`;
+        }
+
+        function compileHighResOutput() {
+            if(capturedImagesData.length < totalTargetShots) return;
+
+            const canvas = document.createElement('canvas');
+            const cw = 380;
+            let imgW = 340; 
+            let imgH = 255; 
+            let startY = 20; 
+            let padding = 14;
+            
+            let ch = 0;
+            if (currentActiveMode === 'classic') {
+                ch = startY + (4 * (imgH + padding)) + 50;
+            } else {
+                let textHeightOffset = 265; 
+                let photosHeightBlock = (2 * (imgH + padding));
+                let bottomFooterPadding = 55; 
+                ch = textHeightOffset + photosHeightBlock + bottomFooterPadding;
+                startY = 265;
+            }
+
+            canvas.width = cw; canvas.height = ch;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = currentActiveMode === 'classic' ? classicBorderValue : '#fafafa';
+            ctx.fillRect(0, 0, cw, ch);
+
+            if(currentActiveMode === 'receipt') {
+                ctx.fillStyle = "#1a1d24";
+                ctx.textAlign = "center";
+                ctx.font = "900 34px 'Courier Prime', monospace";
+                ctx.fillText("12FXCK", cw/2, 65); 
+
+                ctx.font = "700 14px 'Courier Prime', monospace";
+                ctx.fillText(document.getElementById('in-subtitle').value, cw/2, 110);
+                
+                ctx.textAlign = "left";
+                ctx.font = "700 12px 'Courier Prime', monospace";
+                ctx.fillText(document.getElementById('in-date').value, 20, 145);
+                
+                ctx.font = "400 12px 'Courier Prime', monospace";
+                ctx.fillText(document.getElementById('in-i1-name').value, 20, 170); ctx.textAlign = "right"; ctx.fillText(document.getElementById('in-i1-val').value, cw-20, 170);
+                ctx.textAlign = "left"; ctx.fillText(document.getElementById('in-i2-name').value, 20, 190); ctx.textAlign = "right"; ctx.fillText(document.getElementById('in-i2-val').value, cw-20, 190);
+                
+                ctx.font = "700 12px 'Courier Prime', monospace";
+                ctx.textAlign = "left"; ctx.fillText(document.getElementById('in-total-name').value, 20, 220); ctx.textAlign = "right"; ctx.fillText(document.getElementById('in-total-val').value, cw-20, 220);
+                ctx.textAlign = "center"; ctx.fillText("---------------------------", cw/2, 245);
+            }
+
+            let loadedCount = 0;
+            capturedImagesData.forEach((src, idx) => {
+                const img = new Image();
+                img.src = src;
+                img.onload = function() {
+                    let drawX = (cw - imgW) / 2;
+                    let drawY = startY + (idx * (imgH + padding));
+                    ctx.drawImage(img, drawX, drawY, imgW, imgH);
+                    
+                    ctx.strokeStyle = "rgba(0,0,0,0.05)";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(drawX, drawY, imgW, imgH);
+
+                    loadedCount++;
+                    if(loadedCount === totalTargetShots) {
+                        ctx.textAlign = "center";
+                        if(currentActiveMode === 'classic') {
+                            ctx.font = "bold 11px sans-serif";
+                            ctx.fillStyle = (classicBorderValue === '#111111') ? 'rgba(255,255,255,0.5)' : '#6b7280';
+                            ctx.letterSpacing = "0.5px";
+                            ctx.fillText(document.getElementById('in-caption').value.toUpperCase(), cw/2, ch - 38);
+
+                            ctx.font = "800 18px sans-serif";
+                            ctx.fillStyle = (classicBorderValue === '#111111') ? '#ffffff' : '#1a1d24';
+                            ctx.fillText("12F", cw/2, ch - 18);
+                        } else {
+                            let footerY = startY + (2 * (imgH + padding)) + 35;
+                            ctx.fillStyle = "#1a1d24";
+                            ctx.font = "700 13px 'Courier Prime', monospace";
+                            ctx.fillText(document.getElementById('in-receipt-footer').value.toUpperCase(), cw/2, footerY);
+                        }
+
+                        downloadBtn.href = canvas.toDataURL('image/png');
+                        downloadBtn.download = `12f-studio-${Date.now()}.png`;
+                        downloadBtn.style.display = 'block';
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
