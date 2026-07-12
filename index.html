@@ -14,6 +14,7 @@
             --brand-accent: #ffffff;
             --text-muted: #8a8f9c;
             --strip-color: #ffffff;
+            --current-font: 'Plus Jakarta Sans', sans-serif;
         }
 
         * {
@@ -136,12 +137,15 @@
         /* Custom Input Panels */
         .edit-form { display: flex; flex-direction: column; gap: 10px; }
         .input-row { display: flex; gap: 10px; }
-        .edit-form input {
+        .edit-form input, .edit-form select {
             background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
             padding: 12px 16px; border-radius: 10px; font-size: 0.8rem; color: white;
             outline: none; transition: border-color 0.2s;
+            width: 100%;
         }
-        .edit-form input:focus { border-color: rgba(255,255,255,0.3); }
+        .edit-form input:focus, .edit-form select:focus { border-color: rgba(255,255,255,0.3); }
+        .edit-form select { appearance: none; cursor: pointer; }
+        .edit-form select option { background: #1a1c24; color: #ffffff; }
         .input-full { width: 100%; }
         .input-split-left { flex: 2; }
         .input-split-right { flex: 1; }
@@ -248,14 +252,14 @@
         .ledger-row { display: flex; justify-content: space-between; }
         .ledger-total { margin-top: 6px; font-weight: bold; }
 
+        .base-strip-frame * { font-family: var(--current-font) !important; }
         .base-strip-frame.receipt-mode {
-            font-family: 'Courier Prime', monospace !important;
+            font-family: var(--current-font) !important;
             background-color: #fcfbfa !important;
             width: 204px; 
             padding: 16px 12px;
             transform: scale(0.9);
         }
-        .base-strip-frame.receipt-mode * { font-family: 'Courier Prime', monospace !important; }
         .base-strip-frame.receipt-mode .strip-footer-wrapper .strip-footer { font-size: 0.75rem; font-weight: 700; color: #1a1d24 !important; }
         /* --- REPLACE THIS SECTION IN YOUR EXISTING <STYLE> BLOCK --- */
 
@@ -360,6 +364,23 @@
                 </div>
             </div>
 
+            <div class="setting-section" id="typography-module">
+                <h3>4. Typography Selector</h3>
+                <div class="edit-form">
+                    <select id="font-selector" onchange="changeFont()">
+                        <option value="Plus Jakarta Sans">Plus Jakarta Sans (Modern)</option>
+                        <option value="Inter">Inter (Clean)</option>
+                        <option value="Playfair Display">Playfair Display (Elegant)</option>
+                        <option value="Oswald">Oswald (Bold)</option>
+                        <option value="Space Mono">Space Mono (Tech)</option>
+                        <option value="Pacifico">Pacifico (Handwriting)</option>
+                        <option value="Courier Prime">Courier Prime (Typewriter)</option>
+                        <option value="Cinzel">Cinzel (Cinematic)</option>
+                        <option value="Creepster">Creepster (Spooky)</option>
+                    </select>
+                </div>
+            </div>
+
             <div class="action-block">
                 <button id="start-btn" class="trigger-btn">Start Session</button>
                 <a id="download-link" class="download-btn">Download Final Layout</a>
@@ -412,6 +433,7 @@
         const classicColorModule = document.getElementById('classic-color-module');
         const classicFormInputs = document.getElementById('classic-form-inputs');
         const receiptFormInputs = document.getElementById('receipt-form-inputs');
+        const fontSelector = document.getElementById('font-selector');
 
         let currentActiveMode = 'classic'; 
         let classicBorderValue = '#ffffff';
@@ -466,6 +488,22 @@
             }
         }
 
+        function changeFont() {
+            const fontName = fontSelector.value;
+            const fontUrl = `https://fonts.googleapis.com/css2?family=${fontName.replace(/ /g, '+')}:wght@400;600;700;800;900&display=swap`;
+            
+            let link = document.getElementById('dynamic-font');
+            if (!link) {
+                link = document.createElement('link');
+                link.id = 'dynamic-font';
+                link.rel = 'stylesheet';
+                document.head.appendChild(link);
+            }
+            link.href = fontUrl;
+
+            document.documentElement.style.setProperty('--current-font', `"${fontName}", sans-serif`);
+        }
+
         function toggleEngineView(targetMode) {
             currentActiveMode = targetMode;
             downloadBtn.style.display = 'none';
@@ -474,6 +512,8 @@
             document.getElementById('tab-receipt').classList.toggle('active', targetMode === 'receipt');
 
             if (targetMode === 'classic') {
+                fontSelector.value = "Plus Jakarta Sans";
+                changeFont();
                 totalTargetShots = 4;
                 buildStripGrid(totalTargetShots);
                 classicColorModule.style.display = 'block';
@@ -485,6 +525,8 @@
                 footerText.innerText = "12F";
                 setClassicBorderColor(classicBorderValue, document.querySelector(`.color-node[style*="${classicBorderValue}"]`));
             } else {
+                fontSelector.value = "Courier Prime";
+                changeFont();
                 totalTargetShots = 2;
                 buildStripGrid(totalTargetShots);
                 classicColorModule.style.display = 'none';
@@ -590,24 +632,25 @@
             ctx.fillStyle = currentActiveMode === 'classic' ? classicBorderValue : '#fafafa';
             ctx.fillRect(0, 0, cw, ch);
 
+            const selFont = fontSelector.value;
             if(currentActiveMode === 'receipt') {
                 ctx.fillStyle = "#1a1d24";
                 ctx.textAlign = "center";
-                ctx.font = "900 34px 'Courier Prime', monospace";
+                ctx.font = `900 34px "${selFont}", monospace`;
                 ctx.fillText("12FXCK", cw/2, 65); 
 
-                ctx.font = "700 14px 'Courier Prime', monospace";
+                ctx.font = `700 14px "${selFont}", monospace`;
                 ctx.fillText(document.getElementById('in-subtitle').value, cw/2, 110);
                 
                 ctx.textAlign = "left";
-                ctx.font = "700 12px 'Courier Prime', monospace";
+                ctx.font = `700 12px "${selFont}", monospace`;
                 ctx.fillText(document.getElementById('in-date').value, 20, 145);
                 
-                ctx.font = "400 12px 'Courier Prime', monospace";
+                ctx.font = `400 12px "${selFont}", monospace`;
                 ctx.fillText(document.getElementById('in-i1-name').value, 20, 170); ctx.textAlign = "right"; ctx.fillText(document.getElementById('in-i1-val').value, cw-20, 170);
                 ctx.textAlign = "left"; ctx.fillText(document.getElementById('in-i2-name').value, 20, 190); ctx.textAlign = "right"; ctx.fillText(document.getElementById('in-i2-val').value, cw-20, 190);
                 
-                ctx.font = "700 12px 'Courier Prime', monospace";
+                ctx.font = `700 12px "${selFont}", monospace`;
                 ctx.textAlign = "left"; ctx.fillText(document.getElementById('in-total-name').value, 20, 220); ctx.textAlign = "right"; ctx.fillText(document.getElementById('in-total-val').value, cw-20, 220);
                 ctx.textAlign = "center"; ctx.fillText("---------------------------", cw/2, 245);
             }
@@ -629,18 +672,18 @@
                     if(loadedCount === totalTargetShots) {
                         ctx.textAlign = "center";
                         if(currentActiveMode === 'classic') {
-                            ctx.font = "bold 11px sans-serif";
+                            ctx.font = `bold 11px "${selFont}", sans-serif`;
                             ctx.fillStyle = (classicBorderValue === '#111111') ? 'rgba(255,255,255,0.5)' : '#6b7280';
                             ctx.letterSpacing = "0.5px";
                             ctx.fillText(document.getElementById('in-caption').value.toUpperCase(), cw/2, ch - 38);
 
-                            ctx.font = "800 18px sans-serif";
+                            ctx.font = `800 18px "${selFont}", sans-serif`;
                             ctx.fillStyle = (classicBorderValue === '#111111') ? '#ffffff' : '#1a1d24';
                             ctx.fillText("12F", cw/2, ch - 18);
                         } else {
                             let footerY = startY + (2 * (imgH + padding)) + 35;
                             ctx.fillStyle = "#1a1d24";
-                            ctx.font = "700 13px 'Courier Prime', monospace";
+                            ctx.font = `700 13px "${selFont}", monospace`;
                             ctx.fillText(document.getElementById('in-receipt-footer').value.toUpperCase(), cw/2, footerY);
                         }
 
