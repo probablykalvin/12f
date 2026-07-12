@@ -154,17 +154,20 @@
         .trigger-btn {
             width: 100%; background: #ffffff; color: #0b0c10; border: none; padding: 18px;
             border-radius: 14px; font-size: 0.95rem; font-weight: 700; cursor: pointer;
-            transition: opacity 0.2s;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); transform-origin: center;
         }
-        .trigger-btn:disabled { background: rgba(255,255,255,0.1); color: var(--text-muted); cursor: not-allowed; }
+        .trigger-btn:hover:not(:disabled) { transform: translateY(-2px) scale(1.02); box-shadow: 0 10px 20px rgba(255,255,255,0.1); }
+        .trigger-btn:active:not(:disabled) { transform: translateY(1px) scale(0.98); }
+        .trigger-btn:disabled { background: rgba(255,255,255,0.1); color: var(--text-muted); cursor: not-allowed; transform: none; box-shadow: none; }
 
         .download-btn {
             width: 100%; background: transparent; color: white; border: 1px solid rgba(255,255,255,0.2);
             padding: 14px; border-radius: 14px; font-size: 0.9rem; font-weight: 600;
             cursor: pointer; display: none; text-align: center; text-decoration: none;
-            transition: background 0.2s;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .download-btn:hover { background: rgba(255,255,255,0.05); }
+        .download-btn:hover { background: rgba(255,255,255,0.05); transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .download-btn:active { transform: translateY(1px); }
         .download-btn.video-btn { border-color: rgba(96, 165, 250, 0.4); color: #93c5fd; margin-top: -4px; }
         .download-btn.video-btn:hover { background: rgba(96, 165, 250, 0.1); }
         .download-btn.boomerang-btn { border-color: rgba(244, 114, 182, 0.4); color: #f9a8d4; margin-top: -4px; }
@@ -244,7 +247,16 @@
             width: 180px; height: 135px; 
             background: rgba(0,0,0,0.05); background-size: cover; background-position: center;
             border: 1px solid rgba(0,0,0,0.03);
+            position: relative; cursor: default; overflow: hidden;
         }
+        .strip-cell::after {
+            content: "↺ RETAKE"; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); color: white; display: flex; align-items: center; justify-content: center;
+            font-size: 0.85rem; font-weight: 800; letter-spacing: 1px; opacity: 0; transition: opacity 0.2s;
+            pointer-events: none; font-family: 'Plus Jakarta Sans', sans-serif !important;
+        }
+        .strip-cell.retakeable { cursor: pointer; }
+        .strip-cell.retakeable:hover::after { opacity: 1; }
 
         .strip-footer-wrapper {
             text-align: center;
@@ -278,10 +290,12 @@
         .base-strip-frame.receipt-mode {
             font-family: var(--current-font) !important;
             background-color: #fcfbfa !important;
+            color: #1a1d24 !important;
             width: 204px; 
             padding: 16px 12px;
             transform: scale(0.9);
         }
+        .base-strip-frame.receipt-mode * { color: #1a1d24 !important; border-color: #94a3b8 !important; }
         .base-strip-frame.receipt-mode .strip-footer-wrapper .strip-footer { font-size: 0.75rem; font-weight: 700; color: #1a1d24 !important; }
         /* --- REPLACE THIS SECTION IN YOUR EXISTING <STYLE> BLOCK --- */
 
@@ -328,7 +342,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"></script>
 </head>
 <body>
-
+    <audio id="shutter-sound" src="public/camera.mp3" preload="auto"></audio>
     <div id="intro-overlay">
         <div class="intro-card">
             <h1>12F PHOTO STUDIO</h1>
@@ -368,9 +382,15 @@
                 </div>
 
                 <div class="edit-form" id="receipt-form-inputs" style="display: none;">
+                    <input type="text" id="in-order" value="12FXCK" class="input-full" oninput="syncFormValues()" placeholder="Order Number">
+                    <div style="position: relative;">
+                        <input type="text" id="in-date" class="input-full" value="DATE: MAY 16, 2026" oninput="syncFormValues()" placeholder="Custom Date Line" style="padding-right: 40px;">
+                        <div id="date-picker-wrap" style="position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-radius: 8px; cursor: pointer; transition: all 0.15s; user-select: none;">
+                            📅
+                            <input type="date" id="date-picker-btn" style="position:absolute; bottom:0; right:0; opacity:0; width:1px; height:1px; pointer-events:none; border:none; padding:0; margin:0;">
+                        </div>
+                    </div>
                     <input type="text" id="in-subtitle" class="input-full" value="TRACK ORDER" oninput="syncFormValues()" placeholder="Subtitle Header">
-                    <input type="text" id="in-date" class="input-full" value="DATE: MAY 16, 2026" oninput="syncFormValues()" placeholder="Custom Date Line">
-                    
                     <div class="input-row">
                         <input type="text" id="in-i1-name" class="input-split-left" value="ITEM 1" oninput="syncFormValues()">
                         <input type="text" id="in-i1-val" class="input-split-right" value="03:31" oninput="syncFormValues()">
@@ -391,15 +411,15 @@
                 <h3>4. Font Selector</h3>
                 <div class="edit-form">
                     <select id="font-selector" onchange="changeFont()">
-                        <option value="Plus Jakarta Sans">Plus Jakarta Sans (Modern)</option>
-                        <option value="Inter">Inter (Clean)</option>
-                        <option value="Playfair Display">Playfair Display (Elegant)</option>
-                        <option value="Oswald">Oswald (Bold)</option>
-                        <option value="Space Mono">Space Mono (Tech)</option>
-                        <option value="Pacifico">Pacifico (Handwriting)</option>
-                        <option value="Courier Prime">Courier Prime (Typewriter)</option>
-                        <option value="Cinzel">Cinzel (Cinematic)</option>
-                        <option value="Creepster">Creepster (Spooky)</option>
+                        <option value="Plus Jakarta Sans">(Modern)</option>
+                        <option value="Inter">(Clean)</option>
+                        <option value="Playfair Display">(Elegant)</option>
+                        <option value="Oswald">(Bold)</option>
+                        <option value="Space Mono">(Tech)</option>
+                        <option value="Pacifico">(Handwriting)</option>
+                        <option value="Courier Prime">(Typewriter)</option>
+                        <option value="Cinzel">(Cinematic)</option>
+                        <option value="Creepster">(Spooky)</option>
                     </select>
                 </div>
             </div>
@@ -408,7 +428,6 @@
                 <button id="start-btn" class="trigger-btn">Start Session</button>
                 <a id="download-link" class="download-btn">Download Final Layout</a>
                 <a id="download-boomerang" class="download-btn boomerang-btn">Download Boomerang Strip</a>
-                <a id="download-video" class="download-btn video-btn">Download Session Video</a>
             </div>
         </aside>
 
@@ -423,9 +442,9 @@
                 <div class="base-strip-frame" id="studioStrip">
                     
                     <div class="receipt-header-element" id="receiptHeaderBlock">
-                        <h2>12FXCK</h2>
+                        <h2 id="lbl-order">12FXCK</h2>
+                        <p id="lbl-date">DATE: MAY 16, 2026</p>
                         <p id="lbl-subtitle">TRACK ORDER</p>
-                        <p style="font-size:0.53rem; margin-top:4px;" id="lbl-date">DATE: MAY 16, 2026</p>
                     </div>
 
                     <div class="receipt-ledger-element" id="receiptLedgerBlock">
@@ -449,7 +468,6 @@
         const video = document.getElementById('webcam');
         const startBtn = document.getElementById('start-btn');
         const downloadBtn = document.getElementById('download-link');
-        const downloadVideoBtn = document.getElementById('download-video');
         const downloadBoomerangBtn = document.getElementById('download-boomerang');
         const hud = document.getElementById('hud');
         const flash = document.getElementById('flash');
@@ -463,21 +481,61 @@
         const classicFormInputs = document.getElementById('classic-form-inputs');
         const receiptFormInputs = document.getElementById('receipt-form-inputs');
         const fontSelector = document.getElementById('font-selector');
+        
+        const dateInput = document.getElementById('in-date');
+        const datePickerBtn = document.getElementById('date-picker-btn');
+        const today = new Date();
+        
+        dateInput.value = `DATE: ${today.toLocaleDateString('en-US', {year:'numeric', month:'short', day:'numeric'}).toUpperCase()}`;
+        
+        const datePickerWrap = document.getElementById('date-picker-wrap');
+        datePickerWrap.addEventListener('click', () => {
+            datePickerWrap.style.transform = 'translateY(-50%) scale(0.85)';
+            datePickerWrap.style.background = 'rgba(255,255,255,0.2)';
+            setTimeout(() => {
+                datePickerWrap.style.transform = 'translateY(-50%) scale(1)';
+                datePickerWrap.style.background = 'rgba(255,255,255,0.05)';
+            }, 150);
+
+            try {
+                datePickerBtn.showPicker();
+            } catch (e) {
+                datePickerBtn.focus();
+            }
+        });
+
+        datePickerBtn.addEventListener('change', (e) => {
+            if(!e.target.value) return;
+            const parts = e.target.value.split('-');
+            const selectedDate = new Date(parts[0], parts[1] - 1, parts[2]);
+            dateInput.value = `DATE: ${selectedDate.toLocaleDateString('en-US', {year:'numeric', month:'short', day:'numeric'}).toUpperCase()}`;
+            syncFormValues();
+        });
 
         let currentActiveMode = 'classic'; 
         let classicBorderValue = '#ffffff';
         let capturedImagesData = [];
         let totalTargetShots = 4;
-        let mediaRecorder;
-        let recordedChunks = [];
-
-        document.getElementById('in-date').value = `DATE: ${new Date().toLocaleDateString('en-US', {year:'numeric', month:'short', day:'numeric'}).toUpperCase()}`;
 
         function buildStripGrid(count) {
             cellsContainer.innerHTML = '';
             for(let i = 0; i < count; i++) {
                 const cell = document.createElement('div');
                 cell.className = 'strip-cell';
+                
+                cell.onclick = async () => {
+                    if (!cell.classList.contains('retakeable')) return;
+                    
+                    document.querySelectorAll('.strip-cell').forEach(c => c.classList.remove('retakeable'));
+                    downloadBtn.style.display = 'none';
+                    downloadBoomerangBtn.style.display = 'none';
+                    
+                    await executeShotSequence(i);
+                    
+                    document.querySelectorAll('.strip-cell').forEach(c => c.classList.add('retakeable'));
+                    compileHighResOutput();
+                };
+
                 cellsContainer.appendChild(cell);
             }
         }
@@ -501,8 +559,9 @@
         }
 
         function syncFormValues() {
-            document.getElementById('lbl-subtitle').innerText = document.getElementById('in-subtitle').value;
+            document.getElementById('lbl-order').innerText = document.getElementById('in-order').value;
             document.getElementById('lbl-date').innerText = document.getElementById('in-date').value;
+            document.getElementById('lbl-subtitle').innerText = document.getElementById('in-subtitle').value;
             document.getElementById('lbl-i1-name').innerText = document.getElementById('in-i1-name').value;
             document.getElementById('lbl-i1-val').innerText = document.getElementById('in-i1-val').value;
             document.getElementById('lbl-i2-name').innerText = document.getElementById('in-i2-name').value;
@@ -533,12 +592,12 @@
             link.href = fontUrl;
 
             document.documentElement.style.setProperty('--current-font', `"${fontName}", sans-serif`);
+            compileHighResOutput();
         }
 
         function toggleEngineView(targetMode) {
             currentActiveMode = targetMode;
             downloadBtn.style.display = 'none';
-            downloadVideoBtn.style.display = 'none';
             downloadBoomerangBtn.style.display = 'none';
             
             document.getElementById('tab-classic').classList.toggle('active', targetMode === 'classic');
@@ -588,67 +647,21 @@
         startBtn.addEventListener('click', async () => {
             startBtn.disabled = true;
             downloadBtn.style.display = 'none';
-            downloadVideoBtn.style.display = 'none';
             downloadBoomerangBtn.style.display = 'none';
             capturedImagesData = [];
 
             const activeCells = document.querySelectorAll('.strip-cell');
-            activeCells.forEach(c => c.style.backgroundImage = 'none');
-
-            if (video.srcObject) {
-                recordedChunks = [];
-                
-                const sessionCanvas = document.createElement('canvas');
-                sessionCanvas.width = 640;
-                sessionCanvas.height = 480;
-                const sessionCtx = sessionCanvas.getContext('2d');
-                let sessionRecordingFrameId;
-
-                function drawSessionFrame() {
-                    sessionCtx.save();
-                    sessionCtx.translate(sessionCanvas.width, 0);
-                    sessionCtx.scale(-1, 1);
-                    sessionCtx.filter = 'grayscale(100%) contrast(115%) brightness(1.05)';
-                    sessionCtx.drawImage(video, 0, 0, sessionCanvas.width, sessionCanvas.height);
-                    sessionCtx.restore();
-                    sessionRecordingFrameId = requestAnimationFrame(drawSessionFrame);
-                }
-                drawSessionFrame();
-
-                const stream = sessionCanvas.captureStream(30);
-
-                try {
-                    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/mp4;codecs=avc1' });
-                } catch (e) {
-                    try {
-                        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/mp4' });
-                    } catch (err) {
-                        mediaRecorder = new MediaRecorder(stream);
-                    }
-                }
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) recordedChunks.push(e.data);
-                };
-                mediaRecorder.onstop = () => {
-                    const ext = mediaRecorder.mimeType.includes('mp4') ? 'mp4' : 'webm';
-                    const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType });
-                    downloadVideoBtn.href = URL.createObjectURL(blob);
-                    downloadVideoBtn.download = `12f-session-${Date.now()}.${ext}`;
-                    downloadVideoBtn.style.display = 'block';
-                    cancelAnimationFrame(sessionRecordingFrameId);
-                };
-                mediaRecorder.start();
-            }
+            activeCells.forEach(c => {
+                c.style.backgroundImage = 'none';
+                c.classList.remove('retakeable');
+            });
 
             for(let i = 0; i < totalTargetShots; i++) {
                 await executeShotSequence(i);
             }
 
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                mediaRecorder.stop();
-            }
-
             startBtn.disabled = false;
+            document.querySelectorAll('.strip-cell').forEach(c => c.classList.add('retakeable'));
             compileHighResOutput();
         });
 
@@ -677,6 +690,10 @@
         }
 
         function processCapture(index) {
+            const shutterSound = document.getElementById('shutter-sound');
+            shutterSound.currentTime = 0;
+            shutterSound.play().catch(e => console.log('Audio play failed:', e));
+
             flash.classList.remove('flash-anim');
             void flash.offsetWidth;
             flash.classList.add('flash-anim');
@@ -684,16 +701,15 @@
             const canvas = document.createElement('canvas');
             canvas.width = 400; canvas.height = 300; 
             const ctx = canvas.getContext('2d');
-
+            
             ctx.translate(canvas.width, 0);
             ctx.scale(-1, 1);
             
-            // Brightened high-contrast B&W picture generation filter matrix mapping
             ctx.filter = 'grayscale(100%) contrast(115%) brightness(1.05)';
-
             ctx.drawImage(video, 0, 0, 640, 480, 0, 0, canvas.width, canvas.height);
             const base64 = canvas.toDataURL('image/jpeg', 0.95);
-            capturedImagesData.push(base64);
+            
+            capturedImagesData[index] = base64;
             
             const activeCells = document.querySelectorAll('.strip-cell');
             activeCells[index].style.backgroundImage = `url(${base64})`;
@@ -731,15 +747,16 @@
                 ctx.fillStyle = "#1a1d24";
                 ctx.textAlign = "center";
                 ctx.font = `900 34px "${selFont}", monospace`;
-                ctx.fillText("12FXCK", cw/2, 65); 
-
+                let currentY = 65;
+                ctx.fillText(document.getElementById('in-order').value, cw/2, currentY);
+                
                 ctx.font = `700 14px "${selFont}", monospace`;
-                ctx.fillText(document.getElementById('in-subtitle').value, cw/2, 110);
+                currentY += 25;
+                ctx.fillText(document.getElementById('in-date').value, cw/2, currentY);
+                currentY += 20;
+                ctx.fillText(document.getElementById('in-subtitle').value, cw/2, currentY);
                 
                 ctx.textAlign = "left";
-                ctx.font = `700 12px "${selFont}", monospace`;
-                ctx.fillText(document.getElementById('in-date').value, 20, 145);
-                
                 ctx.font = `400 12px "${selFont}", monospace`;
                 ctx.fillText(document.getElementById('in-i1-name').value, 20, 170); ctx.textAlign = "right"; ctx.fillText(document.getElementById('in-i1-val').value, cw-20, 170);
                 ctx.textAlign = "left"; ctx.fillText(document.getElementById('in-i2-name').value, 20, 190); ctx.textAlign = "right"; ctx.fillText(document.getElementById('in-i2-val').value, cw-20, 190);
