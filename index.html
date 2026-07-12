@@ -165,6 +165,29 @@
             transition: background 0.2s;
         }
         .download-btn:hover { background: rgba(255,255,255,0.05); }
+        .download-btn.video-btn { border-color: rgba(96, 165, 250, 0.4); color: #93c5fd; margin-top: -4px; }
+        .download-btn.video-btn:hover { background: rgba(96, 165, 250, 0.1); }
+        .download-btn.boomerang-btn { border-color: rgba(244, 114, 182, 0.4); color: #f9a8d4; margin-top: -4px; }
+        .download-btn.boomerang-btn:hover { background: rgba(244, 114, 182, 0.1); }
+
+        .flash-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: white; opacity: 0; pointer-events: none; z-index: 20;
+        }
+        .flash-anim { animation: flashFire 0.5s ease-out; }
+        @keyframes flashFire { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+        .hud-overlay {
+            position: absolute; font-size: 6rem; font-weight: 800; color: white; z-index: 10;
+            text-shadow: 0 10px 30px rgba(0,0,0,0.8); opacity: 0; transform: scale(0.5);
+        }
+        .hud-anim { animation: countdownPop 1s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes countdownPop {
+            0% { opacity: 0; transform: scale(0.5); }
+            20% { opacity: 1; transform: scale(1.1); }
+            80% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(1.2); }
+        }
 
         /* --- STUDIO VIEWPORT WORKSPACE --- */
         .live-stage {
@@ -193,7 +216,6 @@
             transform: scaleX(-1); 
             filter: grayscale(1) contrast(1.15) brightness(1.05); 
         }
-        .hud-overlay { position: absolute; font-size: 6rem; font-weight: 800; color: white; z-index: 10; }
 
         /* Output Virtual Strip Display Window Container */
         .strip-output-area { 
@@ -303,6 +325,7 @@
     }
 }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"></script>
 </head>
 <body>
 
@@ -330,7 +353,7 @@
             </div>
 
             <div class="setting-section" id="classic-color-module">
-                <h3>2. Normal Outer Frame Color</h3>
+                <h3>2. Outer Frame Color</h3>
                 <div class="picker-grid">
                     <button class="color-node active" style="background:#ffffff;" onclick="setClassicBorderColor('#ffffff', this)"></button>
                     <button class="color-node" style="background:#111111;" onclick="setClassicBorderColor('#111111', this)"></button>
@@ -338,7 +361,7 @@
             </div>
 
             <div class="setting-section" id="customizer-module">
-                <h3>3. Customize Metadata Content</h3>
+                <h3>3. Customize description</h3>
                 
                 <div class="edit-form" id="classic-form-inputs">
                     <input type="text" id="in-caption" class="input-full" value="Class of 2026" oninput="syncFormValues()" placeholder="Small Caption Text">
@@ -365,7 +388,7 @@
             </div>
 
             <div class="setting-section" id="typography-module">
-                <h3>4. Typography Selector</h3>
+                <h3>4. Font Selector</h3>
                 <div class="edit-form">
                     <select id="font-selector" onchange="changeFont()">
                         <option value="Plus Jakarta Sans">Plus Jakarta Sans (Modern)</option>
@@ -384,11 +407,14 @@
             <div class="action-block">
                 <button id="start-btn" class="trigger-btn">Start Session</button>
                 <a id="download-link" class="download-btn">Download Final Layout</a>
+                <a id="download-boomerang" class="download-btn boomerang-btn">Download Boomerang Strip</a>
+                <a id="download-video" class="download-btn video-btn">Download Session Video</a>
             </div>
         </aside>
 
         <main class="live-stage">
             <div class="viewport-wrapper">
+                <div id="flash" class="flash-overlay"></div>
                 <div id="hud" class="hud-overlay"></div>
                 <video id="webcam" autoplay playsinline class="video-stream"></video>
             </div>
@@ -423,7 +449,10 @@
         const video = document.getElementById('webcam');
         const startBtn = document.getElementById('start-btn');
         const downloadBtn = document.getElementById('download-link');
+        const downloadVideoBtn = document.getElementById('download-video');
+        const downloadBoomerangBtn = document.getElementById('download-boomerang');
         const hud = document.getElementById('hud');
+        const flash = document.getElementById('flash');
         const studioStrip = document.getElementById('studioStrip');
         const footerText = document.getElementById('stripFooterText');
         const cellsContainer = document.getElementById('cellsContainer');
@@ -439,6 +468,8 @@
         let classicBorderValue = '#ffffff';
         let capturedImagesData = [];
         let totalTargetShots = 4;
+        let mediaRecorder;
+        let recordedChunks = [];
 
         document.getElementById('in-date').value = `DATE: ${new Date().toLocaleDateString('en-US', {year:'numeric', month:'short', day:'numeric'}).toUpperCase()}`;
 
@@ -507,6 +538,8 @@
         function toggleEngineView(targetMode) {
             currentActiveMode = targetMode;
             downloadBtn.style.display = 'none';
+            downloadVideoBtn.style.display = 'none';
+            downloadBoomerangBtn.style.display = 'none';
             
             document.getElementById('tab-classic').classList.toggle('active', targetMode === 'classic');
             document.getElementById('tab-receipt').classList.toggle('active', targetMode === 'receipt');
@@ -555,13 +588,64 @@
         startBtn.addEventListener('click', async () => {
             startBtn.disabled = true;
             downloadBtn.style.display = 'none';
+            downloadVideoBtn.style.display = 'none';
+            downloadBoomerangBtn.style.display = 'none';
             capturedImagesData = [];
 
             const activeCells = document.querySelectorAll('.strip-cell');
             activeCells.forEach(c => c.style.backgroundImage = 'none');
 
+            if (video.srcObject) {
+                recordedChunks = [];
+                
+                const sessionCanvas = document.createElement('canvas');
+                sessionCanvas.width = 640;
+                sessionCanvas.height = 480;
+                const sessionCtx = sessionCanvas.getContext('2d');
+                let sessionRecordingFrameId;
+
+                function drawSessionFrame() {
+                    sessionCtx.save();
+                    sessionCtx.translate(sessionCanvas.width, 0);
+                    sessionCtx.scale(-1, 1);
+                    sessionCtx.filter = 'grayscale(100%) contrast(115%) brightness(1.05)';
+                    sessionCtx.drawImage(video, 0, 0, sessionCanvas.width, sessionCanvas.height);
+                    sessionCtx.restore();
+                    sessionRecordingFrameId = requestAnimationFrame(drawSessionFrame);
+                }
+                drawSessionFrame();
+
+                const stream = sessionCanvas.captureStream(30);
+
+                try {
+                    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/mp4;codecs=avc1' });
+                } catch (e) {
+                    try {
+                        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/mp4' });
+                    } catch (err) {
+                        mediaRecorder = new MediaRecorder(stream);
+                    }
+                }
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) recordedChunks.push(e.data);
+                };
+                mediaRecorder.onstop = () => {
+                    const ext = mediaRecorder.mimeType.includes('mp4') ? 'mp4' : 'webm';
+                    const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType });
+                    downloadVideoBtn.href = URL.createObjectURL(blob);
+                    downloadVideoBtn.download = `12f-session-${Date.now()}.${ext}`;
+                    downloadVideoBtn.style.display = 'block';
+                    cancelAnimationFrame(sessionRecordingFrameId);
+                };
+                mediaRecorder.start();
+            }
+
             for(let i = 0; i < totalTargetShots; i++) {
                 await executeShotSequence(i);
+            }
+
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
             }
 
             startBtn.disabled = false;
@@ -571,22 +655,32 @@
         function executeShotSequence(cellIndex) {
             return new Promise((resolve) => {
                 let timer = 3;
-                hud.innerText = timer;
+                const triggerHud = (txt) => {
+                    hud.innerText = txt;
+                    hud.classList.remove('hud-anim');
+                    void hud.offsetWidth;
+                    hud.classList.add('hud-anim');
+                };
+
+                triggerHud(timer);
                 let intv = setInterval(() => {
                     timer--;
                     if(timer > 0) {
-                        hud.innerText = timer;
+                        triggerHud(timer);
                     } else {
                         clearInterval(intv);
-                        hud.innerText = "SHOOT";
                         processCapture(cellIndex);
-                        setTimeout(() => { hud.innerText = ""; resolve(); }, 500);
+                        setTimeout(() => { resolve(); }, 600);
                     }
                 }, 1000);
             });
         }
 
         function processCapture(index) {
+            flash.classList.remove('flash-anim');
+            void flash.offsetWidth;
+            flash.classList.add('flash-anim');
+
             const canvas = document.createElement('canvas');
             canvas.width = 400; canvas.height = 300; 
             const ctx = canvas.getContext('2d');
@@ -690,7 +784,32 @@
                         downloadBtn.href = canvas.toDataURL('image/png');
                         downloadBtn.download = `12f-studio-${Date.now()}.png`;
                         downloadBtn.style.display = 'block';
+                        compileBoomerangVideo();
                     }
+                }
+            });
+        }
+
+        function compileBoomerangVideo() {
+            if(capturedImagesData.length < totalTargetShots) return;
+            
+            let sequence = [...capturedImagesData];
+            if (capturedImagesData.length > 2) {
+                for(let i = capturedImagesData.length - 2; i > 0; i--) {
+                    sequence.push(capturedImagesData[i]);
+                }
+            }
+
+            gifshot.createGIF({
+                images: sequence,
+                gifWidth: 400,
+                gifHeight: 300,
+                interval: 0.35, 
+            }, function(obj) {
+                if(!obj.error) {
+                    downloadBoomerangBtn.href = obj.image;
+                    downloadBoomerangBtn.download = `12f-boomerang-${Date.now()}.gif`;
+                    downloadBoomerangBtn.style.display = 'block';
                 }
             });
         }
