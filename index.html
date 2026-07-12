@@ -328,8 +328,9 @@
 
     .viewport-wrapper { 
         width: 100% !important; 
-        max-width: 400px !important; /* Prevents stretching */
-        height: 300px !important; 
+        max-width: 500px !important;
+        height: auto !important; 
+        aspect-ratio: 4/3 !important;
         margin: 0 auto;
     }
 
@@ -543,7 +544,13 @@
 
         function initializeStudioHardware() {
             if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+                navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: "user",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                })
                 .then(strm => {
                     video.srcObject = strm;
                     document.getElementById('intro-overlay').style.opacity = '0';
@@ -702,11 +709,19 @@
             canvas.width = 400; canvas.height = 300; 
             const ctx = canvas.getContext('2d');
             
+            const sw = video.videoWidth;
+            const sh = video.videoHeight;
+            const scale = Math.max(canvas.width / sw, canvas.height / sh);
+            const scaledW = sw * scale;
+            const scaledH = sh * scale;
+            const dx = (canvas.width - scaledW) / 2;
+            const dy = (canvas.height - scaledH) / 2;
+            
             ctx.translate(canvas.width, 0);
             ctx.scale(-1, 1);
             
             ctx.filter = 'grayscale(100%) contrast(115%) brightness(1.05)';
-            ctx.drawImage(video, 0, 0, 640, 480, 0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, 0, 0, sw, sh, dx, dy, scaledW, scaledH);
             const base64 = canvas.toDataURL('image/jpeg', 0.95);
             
             capturedImagesData[index] = base64;
