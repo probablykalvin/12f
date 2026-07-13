@@ -180,6 +180,19 @@
         .flash-anim { animation: flashFire 0.5s ease-out; }
         @keyframes flashFire { 0% { opacity: 1; } 100% { opacity: 0; } }
 
+        .loading-indicator {
+            text-align: center;
+            padding: 14px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #94a3b8;
+            background: rgba(255,255,255,0.02);
+            border-radius: 14px;
+            border: 1px dashed rgba(255,255,255,0.1);
+        }
+        .dots { animation: blink 1.5s infinite; }
+        @keyframes blink { 0% { opacity: 0.2; } 50% { opacity: 1; } 100% { opacity: 0.2; } }
+
         .hud-overlay {
             position: absolute; font-size: 6rem; font-weight: 800; color: white; z-index: 10;
             text-shadow: 0 10px 30px rgba(0,0,0,0.8); opacity: 0; transform: scale(0.5);
@@ -211,13 +224,53 @@
             box-shadow: 0 30px 70px rgba(0,0,0,0.4);
         }
         
-        /* Brightened B&W camera preview feed */
+        /* Camera preview feed */
         .video-stream { 
             width: 100%; 
             height: 100%; 
             object-fit: cover; 
             transform: scaleX(-1); 
-            filter: grayscale(1) contrast(1.15) brightness(1.05); 
+        }
+        .video-stream.filter-bw {
+            /* Hidden on iPad — canvas overlay used instead */
+        }
+
+        /* Canvas overlay for iPad-compatible B&W preview */
+        #bw-canvas-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            pointer-events: none;
+            z-index: 1;
+            display: none;
+        }
+
+        /* Timer & Filter option button groups */
+        .option-btn-group {
+            display: flex;
+            gap: 6px;
+        }
+        .option-btn {
+            flex: 1;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            padding: 10px 0;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+        .option-btn:hover {
+            background: rgba(255,255,255,0.06);
+        }
+        .option-btn.active {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.25);
+            color: #ffffff;
         }
 
         /* Output Virtual Strip Display Window Container */
@@ -375,6 +428,22 @@
                 </div>
             </div>
 
+            <div class="setting-section">
+                <h3>Timer Duration</h3>
+                <div class="option-btn-group" id="timer-selector">
+                    <button class="option-btn active" data-timer="5" onclick="setTimerDuration(5, this)">5s</button>
+                    <button class="option-btn" data-timer="10" onclick="setTimerDuration(10, this)">10s</button>
+                </div>
+            </div>
+
+            <div class="setting-section">
+                <h3>Photo Filter</h3>
+                <div class="option-btn-group" id="filter-selector">
+                    <button class="option-btn active" data-filter="bw" onclick="setFilterMode('bw', this)">Black & White</button>
+                    <button class="option-btn" data-filter="normal" onclick="setFilterMode('normal', this)">Normal</button>
+                </div>
+            </div>
+
             <div class="setting-section" id="customizer-module">
                 <h3>3. Customize description</h3>
                 
@@ -427,8 +496,10 @@
 
             <div class="action-block">
                 <button id="start-btn" class="trigger-btn">Start Session</button>
+                <div id="loading-indicator" class="loading-indicator" style="display: none;">Compiling Media<span class="dots">...</span></div>
                 <a id="download-link" class="download-btn">Download Final Layout</a>
                 <a id="download-boomerang" class="download-btn boomerang-btn">Download Boomerang Strip</a>
+                <a id="download-video" class="download-btn video-btn">Download Video</a>
             </div>
         </aside>
 
@@ -437,6 +508,7 @@
                 <div id="flash" class="flash-overlay"></div>
                 <div id="hud" class="hud-overlay"></div>
                 <video id="webcam" autoplay playsinline class="video-stream"></video>
+                <canvas id="bw-canvas-overlay"></canvas>
             </div>
 
             <div class="strip-output-area">
@@ -470,6 +542,7 @@
         const startBtn = document.getElementById('start-btn');
         const downloadBtn = document.getElementById('download-link');
         const downloadBoomerangBtn = document.getElementById('download-boomerang');
+        const downloadVideoBtn = document.getElementById('download-video');
         const hud = document.getElementById('hud');
         const flash = document.getElementById('flash');
         const studioStrip = document.getElementById('studioStrip');
@@ -517,6 +590,73 @@
         let classicBorderValue = '#ffffff';
         let capturedImagesData = [];
         let totalTargetShots = 4;
+        let timerDuration = 5;
+        let filterMode = 'bw'; // 'bw' or 'normal'
+
+        // --- Video clip recording ---
+        let recordedClips = []; // recordedClips[cellIndex] = [dataURL, ...]
+        const CLIP_FPS = 12;
+        const CLIP_SECONDS = 3;
+
+        // --- iPad-compatible B&W canvas preview ---
+        const bwCanvas = document.getElementById('bw-canvas-overlay');
+        const bwCtx = bwCanvas.getContext('2d', { willReadFrequently: true });
+        let bwAnimFrame = null;
+
+        function startBWPreview() {
+            bwCanvas.style.display = 'block';
+            function drawFrame() {
+                if (filterMode !== 'bw') return;
+                if (video.readyState >= 2) {
+                    const vw = video.videoWidth;
+                    const vh = video.videoHeight;
+                    if (vw && vh) {
+                        bwCanvas.width = bwCanvas.clientWidth;
+                        bwCanvas.height = bwCanvas.clientHeight;
+                        const cw = bwCanvas.width;
+                        const ch = bwCanvas.height;
+                        const scale = Math.max(cw / vw, ch / vh);
+                        const sw = vw * scale;
+                        const sh = vh * scale;
+                        const dx = (cw - sw) / 2;
+                        const dy = (ch - sh) / 2;
+                        bwCtx.save();
+                        bwCtx.translate(cw, 0);
+                        bwCtx.scale(-1, 1);
+                        bwCtx.filter = 'grayscale(100%) contrast(115%) brightness(105%)';
+                        bwCtx.drawImage(video, 0, 0, vw, vh, dx, dy, sw, sh);
+                        bwCtx.restore();
+                    }
+                }
+                bwAnimFrame = requestAnimationFrame(drawFrame);
+            }
+            bwAnimFrame = requestAnimationFrame(drawFrame);
+        }
+
+        function stopBWPreview() {
+            if (bwAnimFrame) {
+                cancelAnimationFrame(bwAnimFrame);
+                bwAnimFrame = null;
+            }
+            bwCanvas.style.display = 'none';
+        }
+
+        function setTimerDuration(seconds, el) {
+            timerDuration = seconds;
+            document.querySelectorAll('#timer-selector .option-btn').forEach(b => b.classList.remove('active'));
+            el.classList.add('active');
+        }
+
+        function setFilterMode(mode, el) {
+            filterMode = mode;
+            document.querySelectorAll('#filter-selector .option-btn').forEach(b => b.classList.remove('active'));
+            el.classList.add('active');
+            if (mode === 'bw') {
+                startBWPreview();
+            } else {
+                stopBWPreview();
+            }
+        }
 
         function buildStripGrid(count) {
             cellsContainer.innerHTML = '';
@@ -530,11 +670,22 @@
                     document.querySelectorAll('.strip-cell').forEach(c => c.classList.remove('retakeable'));
                     downloadBtn.style.display = 'none';
                     downloadBoomerangBtn.style.display = 'none';
+                    downloadVideoBtn.style.display = 'none';
                     
                     await executeShotSequence(i);
                     
                     document.querySelectorAll('.strip-cell').forEach(c => c.classList.add('retakeable'));
-                    compileHighResOutput();
+                    
+                    document.getElementById('loading-indicator').style.display = 'block';
+                    await compileHighResOutput();
+                    await Promise.all([
+                        compileBoomerangVideo(),
+                        compileStripVideo()
+                    ]);
+                    document.getElementById('loading-indicator').style.display = 'none';
+                    downloadBtn.style.display = 'block';
+                    downloadBoomerangBtn.style.display = 'block';
+                    downloadVideoBtn.style.display = 'block';
                 };
 
                 cellsContainer.appendChild(cell);
@@ -557,6 +708,8 @@
                     setTimeout(() => {
                         document.getElementById('intro-overlay').style.display = 'none';
                         document.getElementById('mainDashboard').classList.add('loaded');
+                        // Start B&W canvas preview by default
+                        if (filterMode === 'bw') startBWPreview();
                     }, 600);
                 })
                 .catch(err => {
@@ -606,6 +759,7 @@
             currentActiveMode = targetMode;
             downloadBtn.style.display = 'none';
             downloadBoomerangBtn.style.display = 'none';
+            downloadVideoBtn.style.display = 'none';
             
             document.getElementById('tab-classic').classList.toggle('active', targetMode === 'classic');
             document.getElementById('tab-receipt').classList.toggle('active', targetMode === 'receipt');
@@ -655,7 +809,9 @@
             startBtn.disabled = true;
             downloadBtn.style.display = 'none';
             downloadBoomerangBtn.style.display = 'none';
+            downloadVideoBtn.style.display = 'none';
             capturedImagesData = [];
+            recordedClips = [];
 
             const activeCells = document.querySelectorAll('.strip-cell');
             activeCells.forEach(c => {
@@ -669,12 +825,56 @@
 
             startBtn.disabled = false;
             document.querySelectorAll('.strip-cell').forEach(c => c.classList.add('retakeable'));
-            compileHighResOutput();
+            
+            document.getElementById('loading-indicator').style.display = 'block';
+            await compileHighResOutput();
+            await Promise.all([
+                compileBoomerangVideo(),
+                compileStripVideo()
+            ]);
+            document.getElementById('loading-indicator').style.display = 'none';
+            downloadBtn.style.display = 'block';
+            downloadBoomerangBtn.style.display = 'block';
+            downloadVideoBtn.style.display = 'block';
         });
+
+        function captureRecordFrame(recCanvas, recCtx, cellIndex) {
+            const sw = video.videoWidth;
+            const sh = video.videoHeight;
+            if (!sw || !sh) return;
+            const scale = Math.max(recCanvas.width / sw, recCanvas.height / sh);
+            const scaledW = sw * scale;
+            const scaledH = sh * scale;
+            const dx = (recCanvas.width - scaledW) / 2;
+            const dy = (recCanvas.height - scaledH) / 2;
+            recCtx.save();
+            recCtx.translate(recCanvas.width, 0);
+            recCtx.scale(-1, 1);
+            if (filterMode === 'bw') {
+                recCtx.filter = 'grayscale(100%) contrast(115%) brightness(105%)';
+            } else {
+                recCtx.filter = 'none';
+            }
+            recCtx.drawImage(video, 0, 0, sw, sh, dx, dy, scaledW, scaledH);
+            recCtx.restore();
+            recordedClips[cellIndex].push(recCanvas.toDataURL('image/jpeg', 0.7));
+        }
 
         function executeShotSequence(cellIndex) {
             return new Promise((resolve) => {
-                let timer = 3;
+                let timer = timerDuration;
+                recordedClips[cellIndex] = [];
+
+                // Offscreen canvas for recording frames
+                const recCanvas = document.createElement('canvas');
+                recCanvas.width = 340; recCanvas.height = 255;
+                const recCtx = recCanvas.getContext('2d');
+
+                // Start recording frames for last CLIP_SECONDS seconds
+                const recordStartAt = Math.max(0, timerDuration - CLIP_SECONDS);
+                let elapsed = 0;
+                let recordInterval = null;
+
                 const triggerHud = (txt) => {
                     hud.innerText = txt;
                     hud.classList.remove('hud-anim');
@@ -682,13 +882,28 @@
                     hud.classList.add('hud-anim');
                 };
 
+                // Start frame recording immediately if timer <= CLIP_SECONDS
+                if (recordStartAt === 0) {
+                    recordInterval = setInterval(() => {
+                        captureRecordFrame(recCanvas, recCtx, cellIndex);
+                    }, 1000 / CLIP_FPS);
+                }
+
                 triggerHud(timer);
                 let intv = setInterval(() => {
                     timer--;
+                    elapsed++;
+                    // Start recording when we enter the last CLIP_SECONDS
+                    if (elapsed >= recordStartAt && !recordInterval) {
+                        recordInterval = setInterval(() => {
+                            captureRecordFrame(recCanvas, recCtx, cellIndex);
+                        }, 1000 / CLIP_FPS);
+                    }
                     if(timer > 0) {
                         triggerHud(timer);
                     } else {
                         clearInterval(intv);
+                        if (recordInterval) clearInterval(recordInterval);
                         processCapture(cellIndex);
                         setTimeout(() => { resolve(); }, 600);
                     }
@@ -720,7 +935,9 @@
             ctx.translate(canvas.width, 0);
             ctx.scale(-1, 1);
             
-            ctx.filter = 'grayscale(100%) contrast(115%) brightness(1.05)';
+            if (filterMode === 'bw') {
+                ctx.filter = 'grayscale(100%) contrast(115%) brightness(105%)';
+            }
             ctx.drawImage(video, 0, 0, sw, sh, dx, dy, scaledW, scaledH);
             const base64 = canvas.toDataURL('image/jpeg', 0.95);
             
@@ -731,7 +948,8 @@
         }
 
         function compileHighResOutput() {
-            if(capturedImagesData.length < totalTargetShots) return;
+            return new Promise((resolve) => {
+                if(capturedImagesData.length < totalTargetShots) return resolve();
 
             const canvas = document.createElement('canvas');
             const cw = 380;
@@ -815,15 +1033,16 @@
 
                         downloadBtn.href = canvas.toDataURL('image/png');
                         downloadBtn.download = `12f-studio-${Date.now()}.png`;
-                        downloadBtn.style.display = 'block';
-                        compileBoomerangVideo();
+                        resolve();
                     }
                 }
+            });
             });
         }
 
         function compileBoomerangVideo() {
-            if(capturedImagesData.length < totalTargetShots) return;
+            return new Promise((resolve) => {
+                if(capturedImagesData.length < totalTargetShots) return resolve();
             
             let sequence = [...capturedImagesData];
             if (capturedImagesData.length > 2) {
@@ -841,8 +1060,177 @@
                 if(!obj.error) {
                     downloadBoomerangBtn.href = obj.image;
                     downloadBoomerangBtn.download = `12f-boomerang-${Date.now()}.gif`;
-                    downloadBoomerangBtn.style.display = 'block';
                 }
+                resolve();
+            });
+            });
+        }
+        // --- Download Video: animated strip with recorded clips ---
+        async function compileStripVideo() {
+            // Check we have clips for every cell
+            let hasClips = recordedClips.length >= totalTargetShots;
+            for (let c = 0; c < totalTargetShots; c++) {
+                if (!recordedClips[c] || recordedClips[c].length === 0) { hasClips = false; break; }
+            }
+            if (!hasClips) return;
+
+            // Strip dimensions (same as compileHighResOutput)
+            const cw = 380;
+            let imgW = 340, imgH = 255, startY = 20, padding = 14;
+            let ch = 0;
+            if (currentActiveMode === 'classic') {
+                ch = startY + (4 * (imgH + padding)) + 50;
+            } else {
+                let textHeightOffset = 265;
+                let photosHeightBlock = (2 * (imgH + padding));
+                let bottomFooterPadding = 55;
+                ch = textHeightOffset + photosHeightBlock + bottomFooterPadding;
+                startY = 265;
+            }
+
+            const vidCanvas = document.createElement('canvas');
+            vidCanvas.width = cw; vidCanvas.height = ch;
+            const vCtx = vidCanvas.getContext('2d');
+
+            // Pre-load all recorded frame images
+            const frameImgs = [];
+            for (let c = 0; c < totalTargetShots; c++) {
+                frameImgs[c] = [];
+                for (let f = 0; f < recordedClips[c].length; f++) {
+                    const img = new Image();
+                    img.src = recordedClips[c][f];
+                    await new Promise(r => { img.onload = r; img.onerror = r; });
+                    frameImgs[c].push(img);
+                }
+            }
+
+            // Also pre-load final captured images (for the "freeze" at the end)
+            const finalImgs = [];
+            for (let c = 0; c < totalTargetShots; c++) {
+                const img = new Image();
+                img.src = capturedImagesData[c];
+                await new Promise(r => { img.onload = r; img.onerror = r; });
+                finalImgs.push(img);
+            }
+
+            const selFont = fontSelector.value;
+            const maxFrames = Math.max(...frameImgs.map(arr => arr.length));
+            // Total frames: clip plays forward without freeze
+            const freezeFrames = 0; // no freeze
+            const loopFrames = maxFrames + freezeFrames; // one pass
+            const totalFrames = loopFrames * 2; // loop once = play twice
+
+            // Helper: draw the static strip elements
+            function drawStripStatic() {
+                vCtx.fillStyle = currentActiveMode === 'classic' ? classicBorderValue : '#fafafa';
+                vCtx.fillRect(0, 0, cw, ch);
+
+                if (currentActiveMode === 'receipt') {
+                    vCtx.fillStyle = '#1a1d24';
+                    vCtx.textAlign = 'center';
+                    vCtx.font = `900 34px "${selFont}", monospace`;
+                    let cy = 65;
+                    vCtx.fillText(document.getElementById('in-order').value, cw/2, cy);
+                    vCtx.font = `700 14px "${selFont}", monospace`;
+                    cy += 25; vCtx.fillText(document.getElementById('in-date').value, cw/2, cy);
+                    cy += 20; vCtx.fillText(document.getElementById('in-subtitle').value, cw/2, cy);
+                    vCtx.textAlign = 'left'; vCtx.font = `400 12px "${selFont}", monospace`;
+                    vCtx.fillText(document.getElementById('in-i1-name').value, 20, 170);
+                    vCtx.textAlign = 'right'; vCtx.fillText(document.getElementById('in-i1-val').value, cw-20, 170);
+                    vCtx.textAlign = 'left'; vCtx.fillText(document.getElementById('in-i2-name').value, 20, 190);
+                    vCtx.textAlign = 'right'; vCtx.fillText(document.getElementById('in-i2-val').value, cw-20, 190);
+                    vCtx.font = `700 12px "${selFont}", monospace`;
+                    vCtx.textAlign = 'left'; vCtx.fillText(document.getElementById('in-total-name').value, 20, 220);
+                    vCtx.textAlign = 'right'; vCtx.fillText(document.getElementById('in-total-val').value, cw-20, 220);
+                    vCtx.textAlign = 'center'; vCtx.fillText('---------------------------', cw/2, 245);
+                }
+            }
+
+            function drawStripFooter() {
+                vCtx.textAlign = 'center';
+                if (currentActiveMode === 'classic') {
+                    vCtx.font = `bold 11px "${selFont}", sans-serif`;
+                    vCtx.fillStyle = (classicBorderValue === '#111111') ? 'rgba(255,255,255,0.5)' : '#6b7280';
+                    vCtx.fillText(document.getElementById('in-caption').value.toUpperCase(), cw/2, ch - 38);
+                    vCtx.font = `800 18px "${selFont}", sans-serif`;
+                    vCtx.fillStyle = (classicBorderValue === '#111111') ? '#ffffff' : '#1a1d24';
+                    vCtx.fillText('12F', cw/2, ch - 18);
+                } else {
+                    let footerY = startY + (2 * (imgH + padding)) + 35;
+                    vCtx.fillStyle = '#1a1d24';
+                    vCtx.font = `700 13px "${selFont}", monospace`;
+                    vCtx.fillText(document.getElementById('in-receipt-footer').value.toUpperCase(), cw/2, footerY);
+                }
+            }
+
+            // Set up MediaRecorder — prefer MP4, fall back to WebM
+            const stream = vidCanvas.captureStream(CLIP_FPS);
+            let mimeType = 'video/mp4; codecs=avc1.42E01E';
+            let fileExt = 'mp4';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'video/mp4';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm; codecs=vp9';
+                    fileExt = 'webm';
+                    if (!MediaRecorder.isTypeSupported(mimeType)) {
+                        mimeType = 'video/webm; codecs=vp8';
+                        if (!MediaRecorder.isTypeSupported(mimeType)) {
+                            mimeType = 'video/webm';
+                        }
+                    }
+                }
+            }
+            const recorder = new MediaRecorder(stream, { mimeType });
+            const chunks = [];
+            recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+            // Animate frame by frame in real-time
+            let frameIndex = 0;
+            await new Promise((resolve) => {
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: mimeType.split(';')[0] });
+                    const url = URL.createObjectURL(blob);
+                    downloadVideoBtn.href = url;
+                    downloadVideoBtn.download = `12f-studio-video-${Date.now()}.${fileExt}`;
+                    resolve();
+                };
+
+                recorder.start();
+
+                const interval = setInterval(() => {
+                    if (frameIndex >= totalFrames) {
+                        clearInterval(interval);
+                        recorder.stop();
+                        return;
+                    }
+
+                    // Which frame within a single loop pass
+                    const loopFrame = frameIndex % loopFrames;
+                    const isFreeze = loopFrame >= maxFrames;
+
+                    drawStripStatic();
+
+                    for (let c = 0; c < totalTargetShots; c++) {
+                        const drawX = (cw - imgW) / 2;
+                        const drawY = startY + (c * (imgH + padding));
+
+                        if (isFreeze) {
+                            // Draw the final captured photo
+                            vCtx.drawImage(finalImgs[c], drawX, drawY, imgW, imgH);
+                        } else {
+                            // Draw the clip frame (wrapping if cell has fewer frames)
+                            const fi = Math.min(loopFrame, frameImgs[c].length - 1);
+                            vCtx.drawImage(frameImgs[c][fi], drawX, drawY, imgW, imgH);
+                        }
+
+                        vCtx.strokeStyle = 'rgba(0,0,0,0.05)';
+                        vCtx.lineWidth = 1;
+                        vCtx.strokeRect(drawX, drawY, imgW, imgH);
+                    }
+
+                    drawStripFooter();
+                    frameIndex++;
+                }, 1000 / CLIP_FPS);
             });
         }
     </script>
