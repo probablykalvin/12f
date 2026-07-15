@@ -1047,7 +1047,11 @@
 
                         downloadBtn.href = canvas.toDataURL('image/png');
                         downloadBtn.download = `12f-studio-${Date.now()}.png`;
-                        resolve();
+                        canvas.toBlob(blob => {
+                            downloadBtn._blob = blob;
+                            downloadBtn._filename = downloadBtn.download;
+                            resolve();
+                        }, 'image/png');
                     }
                 }
             });
@@ -1074,8 +1078,14 @@
                 if(!obj.error) {
                     downloadBoomerangBtn.href = obj.image;
                     downloadBoomerangBtn.download = `12f-boomerang-${Date.now()}.gif`;
+                    fetch(obj.image).then(res => res.blob()).then(blob => {
+                        downloadBoomerangBtn._blob = blob;
+                        downloadBoomerangBtn._filename = downloadBoomerangBtn.download;
+                        resolve();
+                    });
+                } else {
+                    resolve();
                 }
-                resolve();
             });
             });
         }
@@ -1206,6 +1216,8 @@
                     const url = URL.createObjectURL(blob);
                     downloadVideoBtn.href = url;
                     downloadVideoBtn.download = `12f-studio-video-${Date.now()}.${fileExt}`;
+                    downloadVideoBtn._blob = blob;
+                    downloadVideoBtn._filename = downloadVideoBtn.download;
                     resolve();
                 };
 
@@ -1247,6 +1259,24 @@
                 }, 1000 / CLIP_FPS);
             });
         }
+
+        // iOS Safari workaround for downloading files directly instead of opening them
+        [downloadBtn, downloadBoomerangBtn, downloadVideoBtn].forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                if (isIOS && btn._blob && btn._filename && navigator.share && navigator.canShare) {
+                    const file = new File([btn._blob], btn._filename, { type: btn._blob.type });
+                    if (navigator.canShare({ files: [file] })) {
+                        e.preventDefault();
+                        try {
+                            await navigator.share({ files: [file] });
+                        } catch (err) {
+                            console.log('Share error:', err);
+                        }
+                    }
+                }
+            });
+        });
     </script>
 </body>
 </html>
