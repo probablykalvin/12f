@@ -593,6 +593,20 @@
         let timerDuration = 5;
         let filterMode = 'bw'; // 'bw' or 'normal'
 
+        function applyManualBWFilter(ctx, width, height) {
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const gray = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
+                let color = (gray - 128) * 1.15 + 128; // contrast(115%)
+                color = color * 1.05; // brightness(105%)
+                if (color > 255) color = 255;
+                if (color < 0) color = 0;
+                data[i] = data[i+1] = data[i+2] = color;
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+
         // --- Video clip recording ---
         let recordedClips = []; // recordedClips[cellIndex] = [dataURL, ...]
         const CLIP_FPS = 12;
@@ -623,9 +637,9 @@
                         bwCtx.save();
                         bwCtx.translate(cw, 0);
                         bwCtx.scale(-1, 1);
-                        bwCtx.filter = 'grayscale(100%) contrast(115%) brightness(105%)';
                         bwCtx.drawImage(video, 0, 0, vw, vh, dx, dy, sw, sh);
                         bwCtx.restore();
+                        applyManualBWFilter(bwCtx, cw, ch);
                     }
                 }
                 bwAnimFrame = requestAnimationFrame(drawFrame);
@@ -850,13 +864,12 @@
             recCtx.save();
             recCtx.translate(recCanvas.width, 0);
             recCtx.scale(-1, 1);
-            if (filterMode === 'bw') {
-                recCtx.filter = 'grayscale(100%) contrast(115%) brightness(105%)';
-            } else {
-                recCtx.filter = 'none';
-            }
             recCtx.drawImage(video, 0, 0, sw, sh, dx, dy, scaledW, scaledH);
             recCtx.restore();
+            
+            if (filterMode === 'bw') {
+                applyManualBWFilter(recCtx, recCanvas.width, recCanvas.height);
+            }
             recordedClips[cellIndex].push(recCanvas.toDataURL('image/jpeg', 0.7));
         }
 
@@ -935,10 +948,11 @@
             ctx.translate(canvas.width, 0);
             ctx.scale(-1, 1);
             
-            if (filterMode === 'bw') {
-                ctx.filter = 'grayscale(100%) contrast(115%) brightness(105%)';
-            }
             ctx.drawImage(video, 0, 0, sw, sh, dx, dy, scaledW, scaledH);
+            
+            if (filterMode === 'bw') {
+                applyManualBWFilter(ctx, canvas.width, canvas.height);
+            }
             const base64 = canvas.toDataURL('image/jpeg', 0.95);
             
             capturedImagesData[index] = base64;
